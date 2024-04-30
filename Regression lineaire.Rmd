@@ -1,0 +1,565 @@
+---
+title: "Regression lineaire Seffane 2023"
+author: "SEFFANE Asmaa"
+date: '2023-01-24'
+output:
+  html_document: default
+  word_document: default
+---
+
+
+## Introduction
+
+Dans ce projet, je vais expliquer le rendement de plants de maïs. Sur chaque parcelle,
+le maïs a un même marqueur génétique (1 ou 2) et une même variété. On mesure différentes
+caractéristiques :
+• le rendement de la parcelle,
+• la teneur moyenne en huile, en proteine et en amidon d’un grain de maïs,
+• le nombre de degrés-jours moyen avant la floraison d’un plant de maïs,
+• le nombre moyen de feuilles par plant de maïs.
+
+Pour commencer, j'importe les librairies nécessaires pour le traitement des données
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(ggplot2)
+library(ggfortify)
+library(gridExtra)
+library(scales) 
+library(viridis)
+library(base)
+library(faraway)
+library(carData)
+```
+
+Chargement des données (Q1)
+
+```{r}
+donnee <- read_delim("mais.txt",
+                   "\t", escape_double = FALSE,
+                   trim_ws = TRUE)
+```
+
+Formatage et analyse descriptive (Q2)
+
+```{r}
+attach(donnee)
+#definitions des données qualitatives:
+donnee$Variete <- as.factor(donnee$Variete)
+donnee$Marqueur <- as.factor(donnee$Marqueur)
+
+levels(Variete)
+levels(Marqueur)  
+#niveau modalité des variables:
+table(Variete)
+table(Marqueur)  
+  #moyenne du rendement par rapport aux variables qualitatives:
+RDM_means <- aggregate(list(Rendement = Rendement), list(Variete = Variete, Marqueur = Marqueur), mean)
+  #moyenne du Huile par rapport aux variables qualitatives:
+HL_means <- aggregate(list(Huile = Huile), list(Variete = Variete, Marqueur = Marqueur), mean)
+  #moyenne du Proteine par rapport aux variables qualitatives:
+PRT_means <- aggregate(list(Proteine = Proteine), list(Variete = Variete, Marqueur = Marqueur), mean)
+  #moyenne du Amidon par rapport aux variables qualitatives:
+AMD_means <- aggregate(list(Amidon = Amidon), list(Variete = Variete, Marqueur = Marqueur), mean)
+  #moyenne du Floraison par rapport aux variables qualitatives:
+FRS_means <- aggregate(list(Floraison = Floraison), list(Variete = Variete, Marqueur = Marqueur), mean)
+  #moyenne du Feuilles par rapport aux variables qualitatives:
+FLLE_means <- aggregate(list(Feuilles = Feuilles), list(Variete = Variete, Marqueur = Marqueur), mean)
+
+#affichage des différentes moyennes
+RDM_means
+HL_means
+PRT_means
+AMD_means
+FRS_means
+FLLE_means
+#Resume des variables quantitatives
+summary(Rendement)
+summary(Huile)
+summary(Amidon)
+summary(Proteine)
+summary(Feuilles)
+summary(Floraison)
+```
+Je remarque que les moyennes restent homogènes : pour chaque variable quantitative, les moyennes par variété et marqueur restent du même ordre de grandeur.
+
+
+#Commençant l'analyse prédictive.
+
+Première approche : La teneur moyenne en amidon d’un grain de maïs permet elle de prédire le rendement d’une parcelle ? (Q3)
+
+En premier temps, on  etudie l'effet de la teneur moyenne de l'amidon sur le rendement, donc on a:
+  Variable réponse: le rendement
+  Variable explicative: moyenne d'amidon (var. quantitative)
+
+on calcule les moyennes des variables puis le coefficient de correlation lineaires:
+
+```{r}
+x_bar <- mean(Amidon)
+y_bar <- mean(Rendement)
+rho_xy <- cor(Rendement, Amidon)
+
+x_bar
+y_bar
+rho_xy
+```
+Le coéficient de corrélation ρ(x, y) = 0.425 est positif.
+ça me permet d'essayer un modèle de regression linéaire simple:
+```{r}
+reg <- lm(Rendement ~ Amidon)
+plot (x = Amidon , y = Rendement)
+abline(reg, col = 'blue')
+```
+Je constate une tendance linéaire confirmée par la droite de regression (en bleu)
+
+on passe à la validation des quatres hypothéses:
+
+```{r  echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg)
+```
+ Regardant si Les résidus observés permettent de valider les hypothèses du modèle linéaire gaussien : 
+ L'hypothése 1: ne peut etre assuré que par le protocole expérimental.
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+ L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+ 
+ Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+ 
+ Regardant l'intervale de confiance
+ 
+
+```{r}
+confint(reg, level = .95)
+```
+  le Test statistique de alpha = 0,05 fait est:
+  H0 : la moyenne d'amidon n'affecte pas le rendement
+  
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg))
+n <- nrow(donnee)
+S2 <- summary(reg)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+summary(reg)
+```
+
+J'ai la P-valeur égale à 4.085e-14 < 0.05, donc H0 est rejetée 
+Donc la moyenne d'Amidon a un effet sur le rendement.
+  
+Passant aux prédictions:
+```{r}
+x1_new <- data.frame("Marqueur" = 1, "Variete" ='Corn_Belt_Dent',                               "Huile" = 3.39, "Proteine" = 13, "Amidon" = 69.34,                         "Floraison" = 1000,"Feuilles" = 17)
+predict(reg, newdata = x1_new, interval = "confidence", level = .95)
+predict(reg, newdata = x1_new, interval = "prediction", level = .95)
+
+x2_new <- data.frame("Marqueur" = 1, "Variete" = 'European_Flint' ,  "Huile" = 3.54, 
+                    "Proteine" = 13.3, "Amidon" = 69.41, "Floraison" = 943,
+                    "Feuilles" = 15)
+predict(reg, newdata = x2_new, interval = "confidence", level = .95)
+predict(reg, newdata = x2_new, interval = "prediction", level = .95)
+
+x3_new <- data.frame("Marqueur" = 2, "Variete" = 'Corn_Belt' ,  "Huile" = 2.85, 
+                    "Proteine" = 11.8, "Amidon" = 67.7, "Floraison" = 934,
+                    "Feuilles" = 16)
+predict(reg, newdata = x3_new, interval = "confidence", level = .95)
+predict(reg, newdata = x3_new, interval = "prediction", level = .95)
+```
+On remarque qu'il y a une augmentation de rendement quand la moyenne d'amidon augmente, on passe d'un rendement de 330.4 d'une d'amidon de 67.7 au rendement de 337.2 d'amidon de 69.4 
+
+Maintenant, je regarde l'efficacité de ce premier modèle à prédire.
+Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg)$r.squared
+```
+Ce coefficient est très faible, Mon modèle ne permet pas de bien prédire le rendement en se basant uniquement sur l'Amidon.
+
+Deuxiéme approche : Le rendement d’une parcelle peut-il être prédit à l’aide de la teneur en amidon, en huile, en proteine d’un grain de maïs ainsi que du nombre de degrés jours avant floraison, et du nombre de feuilles par plant de maïs ? (Q4)
+
+On  etudie l'effet de la teneur moyenne de l'amidon, en huile, en proteine ainsi que du nombre de degrés jours avant floraison et du nombre de feuilles sur le rendement, donc on a:
+  Variable réponse: le rendement
+  Variable explicative: moyenne d'amidon, huile, proteine, floraison et feuilles (variable quantitatives)
+  
+on calcule le coefficient de correlation lineaires:
+```{r}
+rho_xy <- cor(Rendement, Amidon + Huile + Proteine + Feuilles + Floraison)
+rho_xy
+```
+Le coéficient de corrélation ρ(x, y) = 0.411 est positif.
+ça me permet d'essayer un modèle de regression linéaire multiple:
+sa valeur est plus grande que 0, on a une corrélation linéaire positive.
+
+
+```{r}
+reg_1 <- lm(Rendement ~ Amidon + Huile + Proteine + Feuilles + Floraison)
+```
+J'ai une regression multiple, pour savoir s'il y a un problème de colinéarité entre les différentes variables explicatives:
+```{r}
+vif(reg_1)
+```
+Je remarque que les deux variables Feuilles et Florisation ont une valeur plus grande que 5, on va supprimer celle de grande valeur.
+Puis on refait le test:
+
+```{r}
+reg_2 <-  lm(Rendement ~ Amidon + Huile + Proteine + Feuilles)
+vif(reg_2)
+```
+Maintenant que toutes les valeurs ont diminue et devenu plus petit que 5,on peut continuer.
+On commence par verifier les quatres hypotheses:
+```{r  echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_2)
+```
+ L'hypothése 1: ne peut etre assuré que par le protocole expérimental.
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+ L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+ 
+ Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+
+Regardant l'intervale de confiance
+```{r}
+confint(reg_2, level = .95)
+```
+le Test statistique de alpha = 0,05 fait est:
+  H0 : la moyenne d'amidon n'affecte pas le rendement
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg_2))
+n <- nrow(donnee)
+S2 <- summary(reg_2)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+summary(reg_2)
+```
+  J'ai la P-valeur égale à 2.2e-16 < 0.05, donc H0 est rejetée 
+Donc la moyenne d'Amidon, huile, proteine, floraison et feuilles ont un effet sur le rendement.
+  
+Passant aux prédictions:
+ 
+```{r}
+predict(reg_2, newdata = x1_new, interval = "confidence", level = .95)
+predict(reg_2, newdata = x2_new, interval = "confidence", level = .95)
+predict(reg_2, newdata = x3_new, interval = "confidence", level = .95)
+# prediction
+predict(reg_2, newdata = x1_new, interval = "prediction", level = .95)
+
+predict(reg_2, newdata = x2_new, interval = "prediction", level = .95)
+
+predict(reg_2, newdata = x3_new, interval = "prediction", level = .95)
+```
+On remarque qu'il y a une augmentation de rendement quand les autres variables augmente, on passe d'un rendement de 330.4  au rendement de 336.4
+
+
+Maintenant, je regarde l'efficacité de ce premier modèle à prédire.
+Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg_2)$adj.r.squared
+```
+ Ce coefficient est très faible, Mon modèle ne permet pas de bien prédire le rendement en se basant ces variables uniquement.
+ Entre le modéle simple d'un variable et le modéle multiple avec plusieur variable, j'utilise la fonction anova pour savoir parmis ces deux est le plus pertinant:
+```{r}
+anova(reg, reg_2)
+```
+ La p-valeur est inférieure à 5%, on rejette H0 et on conserve le modèle
+qui inclut plusieurs variables explicatives.
+
+
+Troisiéme approche: La variété du plan de maïs a-t-elle une influence sur le rendement de l’espèce ?(Q5)
+
+ On etudie l'effet de la variété sur le rendement, donc on a:
+  Variable réponse: le rendement
+  Variable explicative: moyenne d'amidon (var. qualitative) 
+ En premier temps,je calcule le moyen de rendement par rapport au variete puis  j'écris le modéle simple:
+```{r}
+table(Variete)
+aggregate(
+list(Rendement = Rendement),
+list(Variete = Variete),
+mean
+)
+
+reg_3 <- lm(Rendement ~ Variete )
+```
+On remarque qu'il y a un effet de la variete sur le rendement
+
+on passe à la validation des quatres hypothéses:
+
+```{r  echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_3)
+```
+ L'hypothése 1: ne peut etre assuré que par le protocole expérimental.
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+ L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+
+Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+
+Regardant l'intervale de confiance:
+```{r}
+confint(reg_3, level = .95)
+```
+je remarque que pour l'intervalle de confiance de "Steff_Stalk" n'est pas homogéne avec les autres  
+
+ le Test statistique de alpha = 0,05 fait est:
+  H0 : la moyenne d'amidon n'affecte pas le rendement
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg_3))
+n <- nrow(donnee)
+S2 <- summary(reg_3)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+
+summary(reg_3)
+```
+ J'ai la P-valeur égale à 7.005e-16 < 0.05, donc H0 est rejetée 
+ Donc la variété a un effet sur le rendement.
+ 
+ Je remarque aussi que erreur pour "Stiff_Stalk" est plus fort par rappors aux autre varietes. 
+ 
+Donc de préférence, on enléve la variables "Stiff_Stalk  de notre modele:
+
+```{r}
+donnee_1 <- subset(donnee, donnee$Variete != 'Stiff_Stalk')
+```
+
+J'écris le modéle ensuite on jepasse à la validation des quatres hypothéses: 
+```{r}
+reg_4 <- lm(Rendement ~ Variete, data = donnee_1)
+```
+```{r  echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_5)
+```
+ L'hypothése 1: ne peut etre assuré que par le protocole expérimental.
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+ L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+
+Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+
+Regardant l'intervale de confiance
+```{r}
+confint(reg_4)
+```
+le Test statistique de alpha = 0,05 fait est:
+  H0 : la moyenne d'amidon n'affecte pas le rendement:
+
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg_4))
+n <- nrow(donnee_1)
+S2 <- summary(reg_4)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+
+summary(reg_4)
+```
+ J'ai la P-valeur égale à 4.613e-14 < 0.05, donc H0 est rejetée 
+Donc la variete a un effet sur le rendement.
+  
+Passant aux prédictions:
+```{r}
+
+predict(reg_4, newdata = x1_new, interval = "confidence", level = .95)
+predict(reg_4, newdata = x2_new, interval = "confidence", level = .95)
+
+predict(reg_4, newdata = x1_new, interval = "prediction", level = .95)
+
+predict(reg_4, newdata = x2_new, interval = "prediction", level = .95)
+
+# cette prédiction n'est pas possible car elle contient une variété non utilisé dans notre modèle 
+# predict(reg_5, newdata = x3_new, interval = "prediction", level = .95)
+```
+ On remarque qu'il y a une augmentation de rendement par rapport au variete, on passe d'un rendement de 322.9 au 344.7.
+ 
+Maintenant, je regarde l'efficacité de ce premier modèle à prédire.
+Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg_5)$adj.r.squared
+```
+   Ce coefficient est très faible, Mon modèle ne permet pas de bien prédire le rendement en se basant uniquement sur la variete.
+   
+   J'utilise la comparaison 2à2 des moyennes par modalité:
+```{r}
+pairwise.t.test(donnee_1$Rendement, donnee_1$Variete, "bonferroni")
+```
+Je remarque qu'il n'y a pas de difference d'effet entre "Corn_Belt_Dent" et "Tropical", et entre "European_Flint" et "Northen_Flint". puisque leur P_valeur est supperieur à 0.05
+
+
+Quatriéme approche: Le rendement d’une espèce peut-il être expliqué par sa variété et son marqueur génétique?(Q6)
+ 
+ on  etudie l'effet de la variété et le marqueur génnetique sur le rendement, donc on a:
+  Variable réponse: le rendement
+Variable explicative: variete et marqueur genetique(var. qualitative) 
+  On écrit le modéle puis on passe à la validation des quatres hypothéses: 
+```{r}
+reg_5 <- lm(Rendement ~Variete + Marqueur, data = donnee_1)
+```
+```{r  echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_5)
+``` 
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+ L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+
+ Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+
+Regardant l'intervale de confiance
+```{r}
+confint(reg_5)
+```
+le Test statistique de alpha = 0,05 fait est:
+  H0 : la variete et le marqueur genetique n'affecte pas le rendement
+
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg_5))
+n <- nrow(donnee_1)
+S2 <- summary(reg_5)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+
+summary(reg_5)
+```
+J'ai la P-valeur égale à 2.959e-13 < 0.05, donc H0 est rejetée 
+Donc la variete et le marqueur genetique ont un effet sur le rendement.
+
+ Maintenant, je regarde l'efficacité de ce premier modèle à prédire.
+Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg_5)$adj.r.squared
+```
+  Ce coefficient est très faible, Mon modèle ne permet pas de bien prédire le rendement en se basant uniquement sur l'Amidon.
+  
+ J'applique la fonction anova pour savoir quel modéle parmis le modéle simple ou le modéle multiple est plus pertinant:
+
+```{r}
+anova(reg_4, reg_5)
+```
+  La p-valeur est 0.701 > 0.05, donc on conserve le modéle réduit c'est à dire le modéle simple
+  
+   
+Cinquiéme approche: Le rendement d’une espèce peut-il être expliqué par sa variété et sa teneur en amidon ?(Q7)
+   on  etudie l'effet de la teneur moyenne de l'amidon et la variete sur le rendement, donc on a:
+  Variable réponse: le rendement
+  Variable explicative: moyenne d'amidon et variete (var. quantitative et qualitative)
+ On ecrit le modéle 
+```{r}
+reg_7 <- lm(Rendement ~ Variete * Amidon, data = donnee_1)
+```
+
+  on passe à la validation des quatres hypothéses:
+```{r pressure, echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_7, col = Variete, pch = 16)
+```
+ L'hypothése 2: vérifiée grace au graphique en haut à gauche (espérance nulle)
+L'hypothése 3: vérifiée grace au graphique en bas à gauche (même variance)
+ L'hypothese 4: vérifiée grace au graphique en haut à droite (loi normale respectée)
+
+Grace au graphique en bas à droite, je constate qu'il n'y a pas de points aberrants, je garde alors tout mon échantillon
+
+Regardant l'intervale de confiance
+```{r}
+confint(reg_7)
+```
+le Test statistique de alpha = 0,05 fait est:
+  H0 : la moyenne d'amidon et la variete n'affecte pas le rendement
+```{r}
+alpha <- 0.05
+dim_p <- length(coef(reg_7))
+n <- nrow(donnee_1)
+S2 <- summary(reg_7)$sigma^2
+(n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+summary(reg_7)
+```
+J'ai la P-valeur égale à 2.2e-16 < 0.05, donc H0 est rejetée 
+Donc la moyenne d'Amidon et l'amidon ont un effet sur le rendement.
+  
+Passant aux prédictions:
+
+```{r}
+predict(reg_7, newdata = x1_new, interval = "prediction", level = .95)
+predict(reg_7, newdata = x2_new, interval = "prediction", level = .95)
+
+predict(reg_7, newdata = x1_new, interval = "confidence", level = .95)
+predict(reg_7, newdata = x2_new, interval = "confidence", level = .95)
+```
+je remarque que les variables ont un effet sur le rendement, car il passe de 323.5 à 345.09.
+
+Maintenant, je regarde l'efficacité de ce premier modèle à prédire.
+Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg_7)$adj.r.squared
+```
+ Ce coefficient est très faible, Mon modèle ne permet pas de bien prédire le rendement en se basant uniquement sur l'Amidon.
+  
+
+on fait un anova entre le model simple (reg_5) et le modéle multiple (reg_7) pour savoir qui est le plus pertinent:
+```{r}
+anova(reg_5, reg_7)
+```
+  p-valeur 1.257e-10 < 0.05, on rejette H0 et on conserve le modèle
+qui inclut toutes les variables explicatives (variete et Amidon)
+  
+ maintenant j'applique l'ancova sur le modele dernier:
+```{r}
+Anova(reg_7)
+```
+ Le modèle contenant l’influence conjointe de la variete et de la moyenne d'Amidon,
+ Il n’y a pas d’effet d’interaction.
+ 
+##Conclusion:
+
+Le R square reste cependant faible, intuitivement, je pense à essayer un modèle contenant uniquement les variables 'favorables' déduites des précédents modèles et donc, je considère ce modèle linéaire : tout en regardant son efficacité, je constate que ce modèle est plus efficaces que les précédents, en matière de prédiction, je préférerai d'utiliser celui là perdict
+
+je commence par créer le modéle puis vérifier les hypothéses:
+```{r}
+reg_T <- lm( Rendement ~ Variete + Amidon + Huile + Proteine + Feuilles, data = donnee_1)
+```
+
+```{r pressure, echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_T)
+```
+ Les hypothéses sont toutes verifiées, je passe aux intervalles de confiances:
+```{r}
+confint(reg_T)
+```
+ le Test statistique de alpha = 0,05 fait est:
+  H0 : les variables choisis n'affecte pas le rendement
+```{r}
+ alpha <- 0.05
+ dim_p <- length(coef(reg_T))
+ n <- nrow(donnee_1)
+ S2 <- summary(reg_T)$sigma^2
+ (n - dim_p) * S2/(qchisq(c(1 - alpha/2, alpha/2), n - dim_p))
+
+summary(reg_T)
+```
+   J'ai la P-valeur égale à 2.2e-16 < 0.05, donc H0 est rejetée, et donc variete, moyenne d'amidon, proteine, huile et feuilles ont des effets sur le modele, Voyant pour cela le coefficient de determination ajusté :
+```{r}
+summary(reg_T)$adj.r.squared
+```
+   Ce coefficient est le plus grands de tous les coefficieint precedents:
+```{r}
+summary(reg)$adj.r.squared
+summary(reg_2)$adj.r.squared
+summary(reg_3)$adj.r.squared
+summary(reg_4)$adj.r.squared
+summary(reg_5)$adj.r.squared
+summary(reg_7)$adj.r.squared
+
+```
+ La derniere etape est faire la prediction:
+```{r}
+predict(reg_T, newdata = x1_new, interval = "confidence", level = .95)
+predict(reg_T, newdata = x2_new, interval = "confidence", level = .95)
+predict(reg_T, newdata = x2_new, interval = "prediction", level = .95)
+predict(reg_T, newdata = x2_new, interval = "prediction", level = .95)
+```
+
+ 
+ 
+ 
